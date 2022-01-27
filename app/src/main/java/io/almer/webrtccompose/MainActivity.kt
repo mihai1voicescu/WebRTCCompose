@@ -8,10 +8,12 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.Ref
 import androidx.compose.ui.unit.Dp
@@ -20,10 +22,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.shepeliev.webrtckmp.*
+import io.almer.webrtccompose.MainApp.Companion.mainApp
 import io.almer.webrtccompose.ui.theme.WebRTCComposeTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import org.webrtc.SurfaceViewRenderer
 
 
@@ -47,7 +51,6 @@ class MainActivity : ComponentActivity() {
                 1
             );
 
-        initializeWebRtc(this)
         setContent {
             WebRTCComposeTheme {
                 // A surface container using the 'background' color from the theme
@@ -78,131 +81,52 @@ class MainActivity : ComponentActivity() {
 //    } ?: Text("Connecting")
 //}
 
-private fun drainCandidates(
-    candidates: MutableList<IceCandidate>,
-    peerConnection: PeerConnection
-) {
-    if (candidates.isEmpty()) return
-    candidates.forEach {
-        Log.d(tag, "Drain candidate into PC")
-        peerConnection.addIceCandidate(it)
-    }
-    candidates.clear()
-}
-
 private val tag = "WebRTCDance"
 
 @Composable
 fun WebRTCDance(
 ) {
+    val app = mainApp()
 
     val scope = rememberCoroutineScope()
 
+    val callSimulation by app.callSimulation.collectAsState()
 
-    var stream by remember {
-        mutableStateOf<MediaStream?>(null)
+    var shouldShow by remember {
+        mutableStateOf(true)
     }
 
-    val tracks = remember {
-        mutableStateListOf<MediaStreamTrack>()
+    callSimulation?.apply {
+        if (tracks.isEmpty()) {
+            Text("Loading tracks")
+        } else {
+            if (shouldShow) {
+                StreamPlayer(tracks)
+            } else {
+                Text("Press toogle button to view")
+            }
+        }
+    } ?: Text("No call simulation")
+
+    Box(contentAlignment = Alignment.TopEnd) {
+        Row {
+            Button(onClick = {
+                scope.launch {
+                    app.restart()
+                }
+            }) {
+                Text("Restart")
+            }
+            Button(onClick = {
+                scope.launch {
+                    shouldShow = !shouldShow
+                }
+            }) {
+                Text("Toogle")
+            }
+        }
+
     }
-
-    LaunchedEffect(true) {
-
-        delay(4000)
-        val localPeerConnection = com.shepeliev.webrtckmp.PeerConnection(RtcConfiguration())
-        val remotePeerConnection = com.shepeliev.webrtckmp.PeerConnection(RtcConfiguration())
-
-        val localIceCandidates = mutableListOf<IceCandidate>()
-        val remoteIceCandidates = mutableListOf<IceCandidate>()
-
-        with(localPeerConnection) {
-            onSignalingStateChange
-                .onEach {
-                    Log.d(tag, "Local PC signaling state $it")
-                    if (it == SignalingState.Stable) {
-                        Log.d(tag, "Drain remote candidates into local PC")
-                        drainCandidates(remoteIceCandidates, localPeerConnection)
-                    }
-                }
-                .launchIn(scope)
-
-            onIceCandidate
-                .onEach {
-                    Log.d(tag, "Local PC ICE candidate $it")
-                    if (remotePeerConnection.signalingState == SignalingState.Stable) {
-                        Log.d(tag, "Remote PC is in Stable state. Add Ice candidate")
-                        remotePeerConnection.addIceCandidate(it)
-                    } else {
-                        Log.d(
-                            tag,
-                            "Remote PC is not in Stable state. Collect local candidate"
-                        )
-                        localIceCandidates += it
-                    }
-                }
-                .launchIn(scope)
-        }
-
-
-        with(remotePeerConnection) {
-            onSignalingStateChange
-                .onEach {
-                    Log.d(tag, "Remote PC signaling state $it")
-                    if (it == SignalingState.Stable) {
-                        Log.d(tag, "Drain local candidates into remote PC")
-                        drainCandidates(localIceCandidates, remotePeerConnection)
-                    }
-                }
-                .launchIn(scope)
-
-
-            onIceCandidate
-                .onEach {
-                    Log.d(tag, "Remote PC ICE candidate $it")
-                    if (localPeerConnection.signalingState == SignalingState.Stable) {
-                        Log.d(tag, "Local PC is in Stable state. Add Ice candidate")
-                        localPeerConnection.addIceCandidate(it)
-                    } else {
-                        Log.d(tag, "Local PC is not in Stable state. Collect Ice candidate")
-                        remoteIceCandidates += it
-                    }
-                }
-                .launchIn(scope)
-
-
-            onTrack
-                .onEach { trackEvent ->
-                    Log.d(
-                        tag,
-                        "Remote PC on add track ${trackEvent.track}, streams: ${trackEvent.streams}"
-                    )
-                    trackEvent.streams.firstOrNull()?.also { stream = it }
-                        ?: trackEvent.track?.takeIf { it.kind == MediaStreamTrackKind.Video }
-                            ?.also { tracks.add(it) }
-                }
-                .launchIn(scope)
-
-        }
-
-        val localStream = MediaDevices.getUserMedia(audio = true, video = true)
-
-        localStream.tracks.forEach {
-            localPeerConnection.addTrack(it, localStream)
-        }
-
-        val offer = localPeerConnection.createOffer(OfferAnswerOptions())
-        localPeerConnection.setLocalDescription(offer)
-
-        remotePeerConnection.setRemoteDescription(offer)
-        val answer = remotePeerConnection.createAnswer(OfferAnswerOptions())
-
-        remotePeerConnection.setLocalDescription(answer)
-        localPeerConnection.setRemoteDescription(answer)
-    }
-
-    if (tracks.isEmpty()) Text("Loading")
-    else StreamPlayer(tracks)
 }
 
 //@Composable

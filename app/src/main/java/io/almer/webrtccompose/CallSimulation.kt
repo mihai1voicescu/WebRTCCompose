@@ -127,6 +127,24 @@ class CallSimulation private constructor() {
         negotiate(localPeerConnection, remotePeerConnection)
     }
 
+    suspend fun selectCamera(cameraId: String) {
+        removeTracks()
+        addTracks(cameraId)
+    }
+
+    suspend fun addTracks(cameraId: String) {
+        val localStream = MediaDevices.getUserMedia() {
+            audio(true)
+            video {
+                deviceId(cameraId)
+            }
+        }
+
+        localStream.tracks.forEach {
+            localPeerConnection.addTrack(it, localStream)
+        }
+    }
+
     suspend fun addTracks() {
         val localStream = MediaDevices.getUserMedia(audio = true, video = true)
 

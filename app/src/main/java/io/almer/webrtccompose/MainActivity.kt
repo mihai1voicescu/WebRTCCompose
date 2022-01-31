@@ -101,7 +101,10 @@ fun WebRTCDance(
     }
 
     LaunchedEffect(true) {
-        MediaDevices.enumerateDevices()
+        val devices = MediaDevices.enumerateDevices()
+        cameras.clear()
+
+        devices.filter { it.kind == MediaDeviceKind.VideoInput }.map { it.label to it.deviceId }.toCollection(cameras)
     }
 
     callSimulation?.apply {
@@ -115,6 +118,21 @@ fun WebRTCDance(
             }
         }
     } ?: Text("No call simulation")
+
+
+    Box(contentAlignment = Alignment.BottomStart) {
+        Column {
+            cameras.forEach {
+                Button(onClick = {
+                    scope.launch {
+                        app.callSimulation.value?.selectCamera(it.second)
+                    }
+                }) {
+                    Text(it.first)
+                }
+            }
+        }
+    }
 
     Box(contentAlignment = Alignment.TopEnd) {
         Column {

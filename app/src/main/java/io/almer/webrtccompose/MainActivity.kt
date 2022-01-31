@@ -96,6 +96,14 @@ fun WebRTCDance(
         mutableStateOf(true)
     }
 
+    val cameras = remember {
+        mutableStateListOf<Pair<String, String>>()
+    }
+
+    LaunchedEffect(true) {
+        MediaDevices.enumerateDevices()
+    }
+
     callSimulation?.apply {
         if (tracks.isEmpty()) {
             Text("Loading tracks")
@@ -109,7 +117,7 @@ fun WebRTCDance(
     } ?: Text("No call simulation")
 
     Box(contentAlignment = Alignment.TopEnd) {
-        Row {
+        Column {
             Button(onClick = {
                 scope.launch {
                     app.restart()
@@ -123,6 +131,20 @@ fun WebRTCDance(
                 }
             }) {
                 Text("Toogle")
+            }
+            Button(onClick = {
+                scope.launch {
+                    app.callSimulation.value?.addTracks()
+                }
+            }) {
+                Text("Add Tracks")
+            }
+            Button(onClick = {
+                scope.launch {
+                    app.callSimulation.value?.removeTracks()
+                }
+            }) {
+                Text("Remove Tracks")
             }
         }
 

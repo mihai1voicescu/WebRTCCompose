@@ -35,10 +35,10 @@ class CallSimulation private constructor() {
 
     var stream by mutableStateOf<MediaStream?>(null)
 
-    private suspend fun start() {
-        val localPeerConnection = com.shepeliev.webrtckmp.PeerConnection(RtcConfiguration())
-        val remotePeerConnection = com.shepeliev.webrtckmp.PeerConnection(RtcConfiguration())
+    val localPeerConnection = com.shepeliev.webrtckmp.PeerConnection(RtcConfiguration())
+    val remotePeerConnection = com.shepeliev.webrtckmp.PeerConnection(RtcConfiguration())
 
+    private suspend fun start() {
         val localIceCandidates = mutableListOf<IceCandidate>()
         val remoteIceCandidates = mutableListOf<IceCandidate>()
 
@@ -50,6 +50,13 @@ class CallSimulation private constructor() {
                         Log.d(tag, "Drain remote candidates into local PC")
                         drainCandidates(remoteIceCandidates, localPeerConnection)
                     }
+                }
+                .launchIn(scope)
+
+
+            onNegotiationNeeded
+                .onEach {
+                    negotiate(localPeerConnection, remotePeerConnection)
                 }
                 .launchIn(scope)
 
@@ -82,6 +89,12 @@ class CallSimulation private constructor() {
                 }
                 .launchIn(scope)
 
+            onNegotiationNeeded
+                .onEach {
+                    negotiate(remotePeerConnection, localPeerConnection)
+                }
+                .launchIn(scope)
+
 
             onIceCandidate
                 .onEach {
@@ -111,20 +124,30 @@ class CallSimulation private constructor() {
 
         }
 
+        negotiate(localPeerConnection, remotePeerConnection)
+    }
+
+    suspend fun addTracks() {
         val localStream = MediaDevices.getUserMedia(audio = true, video = true)
 
         localStream.tracks.forEach {
             localPeerConnection.addTrack(it, localStream)
         }
+    }
 
-        val offer = localPeerConnection.createOffer(OfferAnswerOptions())
-        localPeerConnection.setLocalDescription(offer)
+    suspend fun removeTracks() {
+        localPeerConnection.getSenders().forEach { localPeerConnection.removeTrack(it) }
+    }
 
-        remotePeerConnection.setRemoteDescription(offer)
-        val answer = remotePeerConnection.createAnswer(OfferAnswerOptions())
+    suspend fun negotiate(initiator: PeerConnection, receiver: PeerConnection) {
+        val offer = initiator.createOffer(OfferAnswerOptions())
+        initiator.setLocalDescription(offer)
 
-        remotePeerConnection.setLocalDescription(answer)
-        localPeerConnection.setRemoteDescription(answer)
+        receiver.setRemoteDescription(offer)
+        val answer = receiver.createAnswer(OfferAnswerOptions())
+
+        receiver.setLocalDescription(answer)
+        initiator.setRemoteDescription(answer)
     }
 
     companion object {
